@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AddRouteImport } from './routes/add'
 import { Route as IndexRouteImport } from './routes/index'
 
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AddRoute = AddRouteImport.update({
   id: '/add',
   path: '/add',
@@ -26,31 +32,42 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/add': typeof AddRoute
+  '/dashboard': typeof DashboardRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/add': typeof AddRoute
+  '/dashboard': typeof DashboardRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/add': typeof AddRoute
+  '/dashboard': typeof DashboardRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/add'
+  fullPaths: '/' | '/add' | '/dashboard'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/add'
-  id: '__root__' | '/' | '/add'
+  to: '/' | '/add' | '/dashboard'
+  id: '__root__' | '/' | '/add' | '/dashboard'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AddRoute: typeof AddRoute
+  DashboardRoute: typeof DashboardRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/add': {
       id: '/add'
       path: '/add'
@@ -71,6 +88,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AddRoute: AddRoute,
+  DashboardRoute: DashboardRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
