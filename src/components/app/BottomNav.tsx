@@ -1,14 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { Home, PlusCircle, PieChart, Sparkles, Trophy, User } from "lucide-react";
 
-const items = [
+type Item = { to: "/" | "/dashboard" | "/add" | "/insights" | "/goals" | "/settings"; label: string; Icon: typeof Home; primary?: boolean };
+const items: Item[] = [
   { to: "/", label: "Home", Icon: Home },
   { to: "/dashboard", label: "Stats", Icon: PieChart },
   { to: "/add", label: "Add", Icon: PlusCircle, primary: true },
   { to: "/insights", label: "AI", Icon: Sparkles },
   { to: "/goals", label: "Goals", Icon: Trophy },
   { to: "/settings", label: "Profile", Icon: User },
-] as const;
+];
 
 export function BottomNav() {
   return (
