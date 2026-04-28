@@ -2,6 +2,9 @@ import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/r
 import appCss from "../styles.css?url";
 import { Toaster } from "sonner";
 import { BottomNav } from "@/components/app/BottomNav";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import { useRouter, useLocation, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 function NotFoundComponent() {
   return (
@@ -51,9 +54,38 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
+  );
+}
+
+const PUBLIC_ROUTES = ["/login", "/signup"];
+
+function AppShell() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isPublic = PUBLIC_ROUTES.includes(location.pathname);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user && !isPublic) navigate({ to: "/login" });
+    if (user && isPublic) navigate({ to: "/" });
+  }, [user, loading, isPublic, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  return (
     <div className="min-h-screen pb-28">
       <Outlet />
-      <BottomNav />
+      {user && !isPublic && <BottomNav />}
       <Toaster theme="dark" position="top-center" toastOptions={{ style: { background: "oklch(0.21 0.025 280)", border: "1px solid oklch(1 0 0 / 0.08)", color: "oklch(0.98 0.005 280)" } }} />
     </div>
   );
