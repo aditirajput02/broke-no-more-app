@@ -13,6 +13,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as GoalsRouteImport } from './routes/goals'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AddRouteImport } from './routes/add'
@@ -36,6 +37,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InsightsRoute = InsightsRouteImport.update({
+  id: '/insights',
+  path: '/insights',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GoalsRoute = GoalsRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/add': typeof AddRoute
   '/dashboard': typeof DashboardRoute
   '/goals': typeof GoalsRoute
+  '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/add': typeof AddRoute
   '/dashboard': typeof DashboardRoute
   '/goals': typeof GoalsRoute
+  '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/add': typeof AddRoute
   '/dashboard': typeof DashboardRoute
   '/goals': typeof GoalsRoute
+  '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/add'
     | '/dashboard'
     | '/goals'
+    | '/insights'
     | '/login'
     | '/reset-password'
     | '/settings'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/add'
     | '/dashboard'
     | '/goals'
+    | '/insights'
     | '/login'
     | '/reset-password'
     | '/settings'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/add'
     | '/dashboard'
     | '/goals'
+    | '/insights'
     | '/login'
     | '/reset-password'
     | '/settings'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   AddRoute: typeof AddRoute
   DashboardRoute: typeof DashboardRoute
   GoalsRoute: typeof GoalsRoute
+  InsightsRoute: typeof InsightsRoute
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/insights': {
+      id: '/insights'
+      path: '/insights'
+      fullPath: '/insights'
+      preLoaderRoute: typeof InsightsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/goals': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   AddRoute: AddRoute,
   DashboardRoute: DashboardRoute,
   GoalsRoute: GoalsRoute,
+  InsightsRoute: InsightsRoute,
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
@@ -208,3 +229,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
