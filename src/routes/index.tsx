@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { Bar, BarChart, ResponsiveContainer, XAxis, Cell } from "recharts";
 import { Sparkles, Plus, TrendingUp } from "lucide-react";
-import { useAppState, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, CATEGORY_META } from "@/lib/store";
+import { useAppData, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, CATEGORY_META } from "@/lib/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Broke No More — Slay your budget" }] }),
@@ -10,7 +10,8 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { income, expenses } = useAppState((s) => s);
+  const { expenses, profile, loading } = useAppData();
+  const income = profile?.monthly_income ?? 0;
   const week = lastNDays(expenses, 7);
   const weekTotal = totalSpent(week);
   const monthTotal = totalSpent(lastNDays(expenses, 30));
@@ -18,15 +19,18 @@ function Home() {
   const bars = useMemo(() => weeklyBars(expenses), [expenses]);
   const top3 = spentByCategory(week).slice(0, 3);
   const topCat = top3[0]?.[0];
+  const initial = (profile?.username ?? "U").charAt(0).toUpperCase();
+
+  if (loading) return <CenterSpinner />;
 
   return (
     <div className="mx-auto max-w-xl px-5 pt-8 animate-float-up">
       <header className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Hey, spender 👋</p>
+          <p className="text-sm text-muted-foreground">Hey, {profile?.username ?? "spender"} 👋</p>
           <h1 className="text-xl font-bold">Broke No More</h1>
         </div>
-        <Link to="/settings" className="h-10 w-10 rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-glow">U</Link>
+        <Link to="/settings" className="h-10 w-10 rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-glow">{initial}</Link>
       </header>
 
       <section className="mt-6 rounded-3xl p-6 bg-gradient-hero text-primary-foreground shadow-glow relative overflow-hidden">
@@ -107,6 +111,14 @@ function Home() {
       >
         <Plus className="h-7 w-7" />
       </Link>
+    </div>
+  );
+}
+
+export function CenterSpinner() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
     </div>
   );
 }

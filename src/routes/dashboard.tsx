@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { useAppState, CATEGORY_META, type Category, inr, lastNDays, spentByCategory, totalSpent } from "@/lib/store";
+import { useAppData, CATEGORY_META, type Category, inr, lastNDays, spentByCategory, totalSpent } from "@/lib/store";
 import { format } from "date-fns";
+import { CenterSpinner } from "./index";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Broke No More" }] }),
@@ -13,7 +14,7 @@ const RANGES = { Week: 7, Month: 30, Year: 365 } as const;
 type RangeKey = keyof typeof RANGES;
 
 function DashPage() {
-  const expenses = useAppState((s) => s.expenses);
+  const { expenses, loading } = useAppData();
   const [range, setRange] = useState<RangeKey>("Month");
   const [filter, setFilter] = useState<Category | "All">("All");
 
@@ -23,6 +24,8 @@ function DashPage() {
 
   const pieData = byCat.map(([c, v]) => ({ name: c, value: v, color: CATEGORY_META[c].color }));
   const visible = scoped.filter((e) => filter === "All" || e.category === filter);
+
+  if (loading) return <CenterSpinner />;
 
   return (
     <div className="mx-auto max-w-xl px-5 pt-8 pb-4 animate-float-up">

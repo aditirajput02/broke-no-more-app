@@ -1,8 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { actions, useAppState, CATEGORY_META, type Category, inr } from "@/lib/store";
-import { Bell, Palette, Wallet } from "lucide-react";
+import { useAppData, CATEGORY_META, type Category, inr } from "@/lib/store";
+import { Bell, LogOut, Palette, Wallet } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
+import { CenterSpinner } from "./index";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Profile — Broke No More" }] }),
@@ -10,21 +12,37 @@ export const Route = createFileRoute("/settings")({
 });
 
 function SettingsPage() {
-  const income = useAppState((s) => s.income);
-  const budgets = useAppState((s) => s.budgets);
+  const { profile, budgets, setIncome, setBudget, loading } = useAppData();
+  const { signOut, user } = useAuth();
+  const nav = useNavigate();
   const [theme, setTheme] = useState<"Dark" | "Light" | "AMOLED">("Dark");
   const [notif, setNotif] = useState(true);
+
+  if (loading) return <CenterSpinner />;
+  const income = profile?.monthly_income ?? 0;
+  const initial = (profile?.username ?? "U").charAt(0).toUpperCase();
+
+  // Show all default categories so user can set budgets even if none exist yet
+  const allCats = Object.keys(CATEGORY_META) as Category[];
+
+  const logout = async () => {
+    await signOut();
+    nav({ to: "/login" });
+  };
 
   return (
     <div className="mx-auto max-w-xl px-5 pt-8 animate-float-up">
       <div className="flex items-center gap-4">
         <div className="h-16 w-16 rounded-full bg-gradient-primary shadow-glow flex items-center justify-center text-2xl font-bold text-primary-foreground">
-          U
+          {initial}
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">You</h1>
-          <p className="text-sm text-muted-foreground">Certified Saver-in-progress 💪</p>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold">{profile?.username ?? "You"}</h1>
+          <p className="text-sm text-muted-foreground">{user?.email}</p>
         </div>
+        <button onClick={logout} className="rounded-full glass p-2.5" aria-label="Sign out">
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
 
       <Section icon={<Wallet className="h-4 w-4" />} title="Monthly income">
@@ -33,7 +51,7 @@ function SettingsPage() {
           <input
             type="number"
             defaultValue={income}
-            onBlur={(e) => { actions.setIncome(Number(e.target.value) || 0); toast.success("Income updated 💸"); }}
+            onBlur={async (e) => { await setIncome(Number(e.target.value) || 0); toast.success("Income updated 💸"); }}
             className="flex-1 bg-transparent outline-none font-semibold"
           />
         </div>
@@ -42,15 +60,15 @@ function SettingsPage() {
 
       <Section icon={<Wallet className="h-4 w-4" />} title="Category budgets">
         <div className="space-y-2">
-          {(Object.keys(budgets) as Category[]).map((c) => (
+          {allCats.map((c) => (
             <div key={c} className="glass rounded-2xl px-4 py-3 flex items-center gap-3">
               <span className="text-xl">{CATEGORY_META[c].emoji}</span>
               <span className="font-medium text-sm flex-1">{c}</span>
               <span className="text-xs text-muted-foreground">₹</span>
               <input
                 type="number"
-                defaultValue={budgets[c]}
-                onBlur={(e) => actions.setBudget(c, Number(e.target.value) || 0)}
+                defaultValue={budgets[c] ?? 0}
+                onBlur={async (e) => { await setBudget(c, Number(e.target.value) || 0); }}
                 className="w-24 bg-transparent outline-none text-right font-semibold"
               />
             </div>

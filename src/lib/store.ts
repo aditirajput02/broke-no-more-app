@@ -1,5 +1,6 @@
-// minimal store without external deps — tiny pub/sub
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
 
 export type Category =
   | "Food" | "Travel" | "Shopping" | "Fun" | "Rent" | "Subscriptions" | "Health" | "Custom";
@@ -20,62 +21,112 @@ export type Expense = {
   amount: number;
   category: Category;
   note: string;
-  date: string; // ISO
+  date: string;
 };
 
-const today = new Date();
-const daysAgo = (n: number) => {
-  const d = new Date(today); d.setDate(d.getDate() - n); return d.toISOString();
+export type Profile = {
+  id: string;
+  username: string;
+  monthly_income: number;
+  theme: string;
 };
 
-const seed: Expense[] = [
-  { id: "1", amount: 450, category: "Food", note: "Swiggy late-night", date: daysAgo(0) },
-  { id: "2", amount: 1299, category: "Subscriptions", note: "Spotify family", date: daysAgo(1) },
-  { id: "3", amount: 220, category: "Travel", note: "Uber to office", date: daysAgo(1) },
-  { id: "4", amount: 3499, category: "Shopping", note: "Sneakers 👟", date: daysAgo(2) },
-  { id: "5", amount: 180, category: "Food", note: "Coffee", date: daysAgo(2) },
-  { id: "6", amount: 650, category: "Fun", note: "Movie night", date: daysAgo(3) },
-  { id: "7", amount: 12000, category: "Rent", note: "Monthly rent", date: daysAgo(4) },
-  { id: "8", amount: 320, category: "Food", note: "Zomato dinner", date: daysAgo(4) },
-  { id: "9", amount: 99, category: "Health", note: "Multivitamin", date: daysAgo(5) },
-  { id: "10", amount: 540, category: "Food", note: "Brunch w/ friends", date: daysAgo(6) },
-  { id: "11", amount: 280, category: "Travel", note: "Auto", date: daysAgo(7) },
-  { id: "12", amount: 1499, category: "Shopping", note: "Hoodie", date: daysAgo(9) },
-];
+export type Stats = {
+  xp: number;
+  streak: number;
+  last_log_date: string | null;
+};
 
-type State = {
-  income: number;
+export type AppData = {
   expenses: Expense[];
   budgets: Partial<Record<Category, number>>;
-  streak: number;
-  xp: number;
+  profile: Profile | null;
+  stats: Stats;
+  loading: boolean;
+  refresh: () => Promise<void>;
+  addExpense: (e: Omit<Expense, "id">) => Promise<void>;
+  setIncome: (n: number) => Promise<void>;
+  setBudget: (c: Category, n: number) => Promise<void>;
 };
 
-let state: State = {
-  income: 50000,
-  expenses: seed,
-  budgets: { Food: 6000, Travel: 3000, Shopping: 5000, Fun: 2500, Subscriptions: 2000, Health: 1500, Rent: 12000 },
-  streak: 7,
-  xp: 1240,
-};
+export function useAppData(): AppData {
+  const { user } = useAuth();
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [budgets, setBudgets] = useState<Partial<Record<Category, number>>>({});
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<Stats>({ xp: 0, streak: 0, last_log_date: null });
+  const [loading, setLoading] = useState(true);
 
-const listeners = new Set<() => void>();
-const emit = () => listeners.forEach((l) => l());
-const subscribe = (l: () => void) => { listeners.add(l); return () => listeners.delete(l); };
-const getSnapshot = () => state;
+  const refresh = useCallback(async () => {
+    if (!user) { setLoading(false); return; }
+    setLoading(true);
+    const [exp, bud, prof, st] = await Promise.all([
+      supabase.from("expenses").select("*").eq("user_id", user.id).order("date", { ascending: false }),
+      supabase.from("budgets").select("*").eq("user_id", user.id),
+      supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+      supabase.from("user_stats").select("*").eq("user_id", user.id).maybeSingle(),
+    ]);
+    setExpenses((exp.data ?? []).map((r: any) => ({
+      id: r.id, amount: Number(r.amount), category: r.category as Category, note: r.note ?? "", date: r.date,
+    })));
+    const bMap: Partial<Record<Category, number>> = {};
+    for (const b of bud.data ?? []) bMap[b.category as Category] = Number(b.amount);
+    setBudgets(bMap);
+    if (prof.data) setProfile({
+      id: prof.data.id, username: prof.data.username,
+      monthly_income: Number(prof.data.monthly_income), theme: prof.data.theme,
+    });
+    if (st.data) setStats({
+      xp: st.data.xp, streak: st.data.streak, last_log_date: st.data.last_log_date,
+    });
+    setLoading(false);
+  }, [user]);
 
-export function useAppState<T>(selector: (s: State) => T): T {
-  return useSyncExternalStore(subscribe, () => selector(getSnapshot()), () => selector(getSnapshot()));
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const addExpense = useCallback(async (e: Omit<Expense, "id">) => {
+    if (!user) return;
+    const { data, error } = await supabase.from("expenses").insert({
+      user_id: user.id, amount: e.amount, category: e.category, note: e.note, date: e.date,
+    }).select().single();
+    if (error || !data) throw error;
+    setExpenses((prev) => [{
+      id: data.id, amount: Number(data.amount), category: data.category as Category, note: data.note ?? "", date: data.date,
+    }, ...prev]);
+    // XP + streak update
+    const today = new Date().toISOString().slice(0, 10);
+    const last = stats.last_log_date;
+    let newStreak = stats.streak;
+    let bonus = 0;
+    if (last === today) {
+      // same-day, no streak change
+    } else {
+      const lastD = last ? new Date(last) : null;
+      const diff = lastD ? Math.floor((Date.now() - lastD.getTime()) / 86400000) : 99;
+      newStreak = diff === 1 ? stats.streak + 1 : 1;
+      if (newStreak > 0 && newStreak % 7 === 0) bonus = 100;
+    }
+    const newXp = stats.xp + 10 + bonus;
+    const { data: sData } = await supabase.from("user_stats")
+      .upsert({ user_id: user.id, xp: newXp, streak: newStreak, last_log_date: today }, { onConflict: "user_id" })
+      .select().single();
+    if (sData) setStats({ xp: sData.xp, streak: sData.streak, last_log_date: sData.last_log_date });
+  }, [user, stats]);
+
+  const setIncome = useCallback(async (n: number) => {
+    if (!user) return;
+    await supabase.from("profiles").update({ monthly_income: n }).eq("id", user.id);
+    setProfile((p) => p ? { ...p, monthly_income: n } : p);
+  }, [user]);
+
+  const setBudget = useCallback(async (c: Category, n: number) => {
+    if (!user) return;
+    await supabase.from("budgets").upsert({ user_id: user.id, category: c, amount: n }, { onConflict: "user_id,category" });
+    setBudgets((b) => ({ ...b, [c]: n }));
+  }, [user]);
+
+  return { expenses, budgets, profile, stats, loading, refresh, addExpense, setIncome, setBudget };
 }
-
-export const actions = {
-  addExpense(e: Omit<Expense, "id">) {
-    state = { ...state, expenses: [{ ...e, id: crypto.randomUUID() }, ...state.expenses], xp: state.xp + 10 };
-    emit();
-  },
-  setIncome(n: number) { state = { ...state, income: n }; emit(); },
-  setBudget(c: Category, n: number) { state = { ...state, budgets: { ...state.budgets, [c]: n } }; emit(); },
-};
 
 // helpers
 export const inr = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -97,7 +148,7 @@ export function lastNDays(expenses: Expense[], n: number) {
 
 export function weeklyBars(expenses: Expense[]) {
   const days = ["S","M","T","W","T","F","S"];
-  const arr = Array.from({ length: 7 }, (_, i) => {
+  return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() - (6 - i));
     const dayKey = d.toDateString();
     const total = expenses
@@ -105,5 +156,4 @@ export function weeklyBars(expenses: Expense[]) {
       .reduce((s, e) => s + e.amount, 0);
     return { day: days[d.getDay()], total };
   });
-  return arr;
 }

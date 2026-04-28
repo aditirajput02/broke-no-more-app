@@ -1,21 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Sparkles, Send, TrendingUp, TrendingDown, PiggyBank } from "lucide-react";
-import { useAppState, lastNDays, spentByCategory, totalSpent, inr, CATEGORY_META, type Category } from "@/lib/store";
+import { Sparkles, Send, TrendingUp, TrendingDown, PiggyBank, Loader2 } from "lucide-react";
+import { useAppData, lastNDays, spentByCategory, totalSpent, inr, CATEGORY_META } from "@/lib/store";
+import { supabase } from "@/integrations/supabase/client";
+import { CenterSpinner } from "./index";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/insights")({
   head: () => ({ meta: [{ title: "AI Insights — Broke No More" }] }),
   component: InsightsPage,
 });
 
-type Msg = { role: "user" | "ai"; text: string };
+type Msg = { role: "user" | "assistant"; content: string };
 
 function InsightsPage() {
-  const expenses = useAppState((s) => s.expenses);
+  const { expenses, profile, loading } = useAppData();
   const [chat, setChat] = useState<Msg[]>([
-    { role: "ai", text: "Hey 👋 I'm your money bestie. Ask me anything — like 'how much did I spend on coffee this month?'" },
+    { role: "assistant", content: "Hey 👋 I'm your money bestie. Ask me about your spending — try 'analyze my month' or 'how much on food?'" },
   ]);
   const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
 
   const insights = useMemo(() => {
     const thisWeek = lastNDays(expenses, 7);
@@ -29,15 +33,34 @@ function InsightsPage() {
     return { tw, lw, delta, top };
   }, [expenses]);
 
-  const send = () => {
-    const q = input.trim();
-    if (!q) return;
+  const summary = useMemo(() => ({
+    income: profile?.monthly_income ?? 0,
+    last30Days: spentByCategory(lastNDays(expenses, 30)).map(([c, v]) => ({ category: c, amount: v })),
+    last7Days: spentByCategory(lastNDays(expenses, 7)).map(([c, v]) => ({ category: c, amount: v })),
+    totalThisMonth: totalSpent(lastNDays(expenses, 30)),
+    transactionCount: expenses.length,
+  }), [expenses, profile]);
+
+  const send = async (text?: string) => {
+    const q = (text ?? input).trim();
+    if (!q || sending) return;
     setInput("");
-    setChat((c) => [...c, { role: "user", text: q }]);
-    setTimeout(() => {
-      setChat((c) => [...c, { role: "ai", text: replyTo(q, expenses) }]);
-    }, 500);
+    const newMsgs: Msg[] = [...chat, { role: "user", content: q }];
+    setChat(newMsgs);
+    setSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-insights", {
+        body: { messages: newMsgs, summary },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      setChat((c) => [...c, { role: "assistant", content: data.reply }]);
+    } catch (e: any) {
+      toast.error(e?.message ?? "AI is sleeping 💤");
+    } finally { setSending(false); }
   };
+
+  if (loading) return <CenterSpinner />;
 
   return (
     <div className="mx-auto max-w-xl px-5 pt-8 animate-float-up">
@@ -54,9 +77,11 @@ function InsightsPage() {
             This week vs last
           </div>
           <p className="mt-2 text-lg font-semibold">
-            {insights.delta >= 0
-              ? `You're spending ${Math.abs(insights.delta)}% more this week 👀`
-              : `You cut spending by ${Math.abs(insights.delta)}% — slay 💅`}
+            {insights.lw === 0
+              ? `Fresh start! ${inr(insights.tw)} this week.`
+              : insights.delta >= 0
+                ? `You're spending ${Math.abs(insights.delta)}% more this week 👀`
+                : `You cut spending by ${Math.abs(insights.delta)}% — slay 💅`}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {inr(insights.tw)} this week · {inr(insights.lw)} last week
@@ -71,25 +96,33 @@ function InsightsPage() {
           </div>
         )}
 
-        <div className="glass rounded-3xl p-5 shadow-card">
+        <button onClick={() => send("Analyze my spending this month — give me one high-spend flag, one win, and one personalized saving tip.")}
+          className="w-full glass rounded-3xl p-5 shadow-card text-left hover:scale-[1.01] transition-transform">
           <div className="flex items-center gap-2 text-xs font-semibold text-teal uppercase tracking-wider">
-            <PiggyBank className="h-3.5 w-3.5" /> Smart move
+            <PiggyBank className="h-3.5 w-3.5" /> Tap for full AI analysis
           </div>
-          <p className="mt-2 font-semibold">Cut 2 Swiggy orders/week = save ₹3,600/month</p>
-          <p className="text-xs text-muted-foreground mt-1">That's a Spotify family + a movie night. Just saying.</p>
-        </div>
+          <p className="mt-2 font-semibold">Get flags, wins, and a personalized saving move</p>
+          <p className="text-xs text-muted-foreground mt-1">Powered by Money Bestie 💜</p>
+        </button>
       </div>
 
       <div className="mt-6">
         <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Ask your money bestie</p>
-        <div className="space-y-2 mb-3 max-h-72 overflow-y-auto">
+        <div className="space-y-2 mb-3 max-h-[40vh] overflow-y-auto">
           {chat.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"} animate-pop-in`}>
-              <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${m.role === "user" ? "bg-gradient-primary text-primary-foreground" : "glass"}`}>
-                {m.text}
+              <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-gradient-primary text-primary-foreground" : "glass"}`}>
+                {m.content}
               </div>
             </div>
           ))}
+          {sending && (
+            <div className="flex justify-start">
+              <div className="glass rounded-2xl px-4 py-2.5 text-sm flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> thinking…
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <input
@@ -99,27 +132,12 @@ function InsightsPage() {
             placeholder="How much did I spend on food?"
             className="flex-1 glass rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
           />
-          <button onClick={send} className="h-12 w-12 rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground shadow-glow active:scale-95 transition-transform">
+          <button onClick={() => send()} disabled={sending || !input.trim()}
+            className="h-12 w-12 rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground shadow-glow active:scale-95 transition-transform disabled:opacity-60">
             <Send className="h-4 w-4" />
           </button>
         </div>
       </div>
     </div>
   );
-}
-
-function replyTo(q: string, expenses: ReturnType<typeof useAppState<any>>) {
-  const ql = q.toLowerCase();
-  const cats = Object.keys(CATEGORY_META) as Category[];
-  const matched = cats.find((c) => ql.includes(c.toLowerCase())) ||
-    (ql.includes("coffee") || ql.includes("swiggy") || ql.includes("zomato") ? "Food" as Category : null);
-  if (matched) {
-    const total = (expenses as any[]).filter((e) => e.category === matched).reduce((s, e) => s + e.amount, 0);
-    return `You've dropped ${inr(total)} on ${matched} ${CATEGORY_META[matched].emoji}. Worth it? You decide.`;
-  }
-  if (ql.includes("total") || ql.includes("spent") || ql.includes("how much")) {
-    return `Total damage so far: ${inr(totalSpent(expenses as any[]))}. Deep breaths. 🧘`;
-  }
-  if (ql.includes("save")) return "Easy wins: cut 1 subscription you don't use + skip 2 takeout meals = ~₹2k/month saved 💰";
-  return "Hmm, try asking about a category like 'food' or 'shopping' — I'll spill the tea ☕";
 }

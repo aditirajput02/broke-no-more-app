@@ -1,9 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Calendar as CalIcon } from "lucide-react";
-import { Link } from "@tanstack/react-router";
-import { actions, CATEGORY_META, type Category, inr } from "@/lib/store";
+import { useAppData, CATEGORY_META, type Category, inr } from "@/lib/store";
 import { format } from "date-fns";
 
 export const Route = createFileRoute("/add")({
@@ -25,17 +24,24 @@ const quips: Record<string, string> = {
 
 function AddPage() {
   const nav = useNavigate();
+  const { addExpense } = useAppData();
   const [amount, setAmount] = useState("");
   const [cat, setCat] = useState<Category>("Food");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [saving, setSaving] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     const n = Number(amount);
     if (!n || n <= 0) { toast.error("Enter an amount first 💸"); return; }
-    actions.addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
-    toast.success(quips[cat] ?? "Logged!", { description: `-${inr(n)} from ${cat} budget` });
-    nav({ to: "/" });
+    setSaving(true);
+    try {
+      await addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
+      toast.success(quips[cat] ?? "Logged!", { description: `-${inr(n)} from ${cat} budget · +10 XP` });
+      nav({ to: "/" });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't save");
+    } finally { setSaving(false); }
   };
 
   return (
@@ -102,9 +108,10 @@ function AddPage() {
 
       <button
         onClick={submit}
-        className="mt-8 w-full rounded-2xl bg-gradient-primary py-4 text-base font-semibold text-primary-foreground shadow-glow transition-transform active:scale-95"
+        disabled={saving}
+        className="mt-8 w-full rounded-2xl bg-gradient-primary py-4 text-base font-semibold text-primary-foreground shadow-glow transition-transform active:scale-95 disabled:opacity-60"
       >
-        Log it 💸
+        {saving ? "Saving…" : "Log it 💸"}
       </button>
     </div>
   );
