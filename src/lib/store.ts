@@ -1,6 +1,4 @@
-import { create } from "zustand";
-
-// minimal zustand-like store without dep — using a tiny pub/sub
+// minimal store without external deps — tiny pub/sub
 import { useSyncExternalStore } from "react";
 
 export type Category =
@@ -109,6 +107,3 @@ export function weeklyBars(expenses: Expense[]) {
   });
   return arr;
 }
-
-// shim — we don't actually use zustand
-export function create<T>(_: T): T { return _ as T; }
