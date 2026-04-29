@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { Sparkles, Send, TrendingUp, TrendingDown, PiggyBank, Loader2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Sparkles, Send, TrendingUp, TrendingDown, PiggyBank, Loader2, Share2 } from "lucide-react";
 import { useAppData, lastNDays, spentByCategory, totalSpent, inr, CATEGORY_META } from "@/lib/store";
+import { toPng } from "html-to-image";
 import { supabase } from "@/integrations/supabase/client";
 import { CenterSpinner } from "./index";
 import { toast } from "sonner";
@@ -15,6 +16,8 @@ type Msg = { role: "user" | "assistant"; content: string };
 
 function InsightsPage() {
   const { expenses, profile, loading } = useAppData();
+  const shareRef = useRef<HTMLDivElement | null>(null);
+  const [sharing, setSharing] = useState(false);
   const [chat, setChat] = useState<Msg[]>([
     { role: "assistant", content: "Hey 👋 I'm your money bestie. Ask me about your spending — try 'analyze my month' or 'how much on food?'" },
   ]);
@@ -40,6 +43,46 @@ function InsightsPage() {
     totalThisMonth: totalSpent(lastNDays(expenses, 30)),
     transactionCount: expenses.length,
   }), [expenses, profile]);
+
+  const weekTopCats = useMemo(
+    () => spentByCategory(lastNDays(expenses, 7)).slice(0, 4),
+    [expenses],
+  );
+
+  const handleShare = async () => {
+    if (!shareRef.current || sharing) return;
+    setSharing(true);
+    try {
+      const dataUrl = await toPng(shareRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#0b0717",
+      });
+      const filename = `broke-no-more-week-${new Date().toISOString().slice(0, 10)}.png`;
+
+      // Try Web Share API with file first (mobile)
+      try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], filename, { type: "image/png" });
+        const navAny = navigator as any;
+        if (navAny.canShare && navAny.canShare({ files: [file] })) {
+          await navAny.share({ files: [file], title: "My week on Broke No More" });
+          toast.success("Shared! 🎉");
+          return;
+        }
+      } catch {/* fall through to download */}
+
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename;
+      a.click();
+      toast.success("Saved your weekly flex 📸");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't generate image");
+    } finally {
+      setSharing(false);
+    }
+  };
 
   const send = async (text?: string) => {
     const q = (text ?? input).trim();
@@ -67,8 +110,86 @@ function InsightsPage() {
       <div className="flex items-center gap-2">
         <Sparkles className="h-5 w-5 text-primary" />
         <h1 className="text-2xl font-bold">AI Insights</h1>
+        <button
+          onClick={handleShare}
+          disabled={sharing}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-gradient-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-glow active:scale-95 transition-transform disabled:opacity-60"
+        >
+          {sharing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
+          Share week
+        </button>
       </div>
       <p className="text-sm text-muted-foreground">Receipts with reasoning.</p>
+
+      {/* Off-screen shareable card rendered into a PNG */}
+      <div className="fixed -left-[9999px] top-0" aria-hidden>
+        <div
+          ref={shareRef}
+          style={{
+            width: 540,
+            padding: 32,
+            background: "linear-gradient(135deg, #2a0e54 0%, #0b0717 60%, #1a0a3a 100%)",
+            color: "#fff",
+            fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+            borderRadius: 28,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", opacity: 0.7 }}>
+              Broke No More
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.6 }}>
+              {profile?.username ? `@${profile.username}` : "weekly recap"}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 18, fontSize: 14, opacity: 0.8 }}>This week I spent</div>
+          <div style={{ fontSize: 64, fontWeight: 800, lineHeight: 1.05, marginTop: 4 }}>
+            {inr(insights.tw)}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+            {insights.lw === 0
+              ? "Fresh start. Watch me cook 👀"
+              : insights.delta >= 0
+                ? `${Math.abs(insights.delta)}% more than last week 😬`
+                : `${Math.abs(insights.delta)}% less than last week — slay 💅`}
+          </div>
+
+          <div style={{ marginTop: 22, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.6 }}>
+            Top categories
+          </div>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            {weekTopCats.length === 0 && (
+              <div style={{ fontSize: 14, opacity: 0.7 }}>No spending this week. Iconic. 🌟</div>
+            )}
+            {weekTopCats.map(([c, v]) => {
+              const pct = insights.tw > 0 ? Math.round((v / insights.tw) * 100) : 0;
+              return (
+                <div key={c} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontSize: 22, width: 28 }}>{CATEGORY_META[c].emoji}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600 }}>
+                      <span>{c}</span>
+                      <span>{inr(v)}</span>
+                    </div>
+                    <div style={{ marginTop: 4, height: 8, background: "rgba(255,255,255,0.1)", borderRadius: 999 }}>
+                      <div style={{
+                        width: `${pct}%`, height: "100%", borderRadius: 999,
+                        background: "linear-gradient(90deg, #c084fc, #f97171)",
+                      }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", fontSize: 11, opacity: 0.6 }}>
+            <span>{new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+            <span>brokenomore.app ✨</span>
+          </div>
+        </div>
+      </div>
 
       <div className="mt-5 space-y-3">
         <div className="glass rounded-3xl p-5 shadow-card border border-primary/30">
