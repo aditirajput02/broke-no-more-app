@@ -87,7 +87,7 @@ export function useAppData(): AppData {
   useEffect(() => { refresh(); }, [refresh]);
 
   const addExpense = useCallback(async (e: Omit<Expense, "id">) => {
-    if (!user) return;
+    if (!user) throw new Error("Not signed in");
     const { data, error } = await supabase.from("expenses").insert({
       user_id: user.id, amount: e.amount, category: e.category, note: e.note, date: e.date,
     }).select().single();
