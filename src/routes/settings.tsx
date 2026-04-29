@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useAppData, CATEGORY_META, type Category, inr } from "@/lib/store";
+import { useAppData, getMeta, inr } from "@/lib/store";
 import { Bell, LogOut, Palette, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -12,7 +12,7 @@ export const Route = createFileRoute("/settings")({
 });
 
 function SettingsPage() {
-  const { profile, budgets, setIncome, setBudget, loading } = useAppData();
+  const { profile, budgets, setIncome, setBudget, loading, categories, categoryMap } = useAppData();
   const { signOut, user } = useAuth();
   const nav = useNavigate();
   const [theme, setTheme] = useState<"Dark" | "Light" | "AMOLED">("Dark");
@@ -21,9 +21,6 @@ function SettingsPage() {
   if (loading) return <CenterSpinner />;
   const income = profile?.monthly_income ?? 0;
   const initial = (profile?.username ?? "U").charAt(0).toUpperCase();
-
-  // Show all default categories so user can set budgets even if none exist yet
-  const allCats = Object.keys(CATEGORY_META) as Category[];
 
   const logout = async () => {
     await signOut();
@@ -60,19 +57,27 @@ function SettingsPage() {
 
       <Section icon={<Wallet className="h-4 w-4" />} title="Category budgets">
         <div className="space-y-2">
-          {allCats.map((c) => (
-            <div key={c} className="glass rounded-2xl px-4 py-3 flex items-center gap-3">
-              <span className="text-xl">{CATEGORY_META[c].emoji}</span>
-              <span className="font-medium text-sm flex-1">{c}</span>
-              <span className="text-xs text-muted-foreground">₹</span>
-              <input
-                type="number"
-                defaultValue={budgets[c] ?? 0}
-                onBlur={async (e) => { await setBudget(c, Number(e.target.value) || 0); }}
-                className="w-24 bg-transparent outline-none text-right font-semibold"
-              />
-            </div>
-          ))}
+          {categories.map((c) => {
+            const meta = getMeta(c.name, categoryMap);
+            return (
+              <div key={c.id} className="glass rounded-2xl px-4 py-3 flex items-center gap-3">
+                <span className="text-xl">{meta.emoji}</span>
+                <span className="font-medium text-sm flex-1 truncate">{c.name}</span>
+                <span className="text-xs text-muted-foreground">₹</span>
+                <input
+                  type="number"
+                  defaultValue={budgets[c.name] ?? 0}
+                  onBlur={async (e) => { await setBudget(c.name, Number(e.target.value) || 0); }}
+                  className="w-24 bg-transparent outline-none text-right font-semibold"
+                />
+              </div>
+            );
+          })}
+          {categories.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">
+              No categories yet — add one from the Stats page.
+            </p>
+          )}
         </div>
       </Section>
 
