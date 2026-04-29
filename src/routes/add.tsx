@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Calendar as CalIcon } from "lucide-react";
-import { useAppData, CATEGORY_META, type Category, inr } from "@/lib/store";
+import { useAppData, CATEGORY_META, type Category, inr, type Expense } from "@/lib/store";
 import { format } from "date-fns";
 
 export const Route = createFileRoute("/add")({
@@ -24,7 +24,7 @@ const quips: Record<string, string> = {
 
 function AddPage() {
   const nav = useNavigate();
-  const { addExpense } = useAppData();
+  const { addExpense, deleteExpense, expenses } = useAppData();
   const [amount, setAmount] = useState("");
   const [cat, setCat] = useState<Category>("Food");
   const [note, setNote] = useState("");
@@ -37,7 +37,28 @@ function AddPage() {
     setSaving(true);
     try {
       await addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
-      toast.success(quips[cat] ?? "Logged!", { description: `-${inr(n)} from ${cat} budget · +10 XP` });
+      toast.success(quips[cat] ?? "Logged!", {
+        description: `-${inr(n)} from ${cat} budget · +10 XP`,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            // Find the most recent matching expense (just inserted) and delete it.
+            const justAdded = [...expenses, { id: "", amount: n, category: cat, note, date } as unknown as Expense]
+              .filter((e) => e.amount === n && e.category === cat)
+              .sort((a, b) => +new Date(b.date) - +new Date(a.date))[0];
+            if (!justAdded?.id) {
+              // Fallback: refresh and grab newest
+              return;
+            }
+            try {
+              await deleteExpense(justAdded.id);
+              toast("Undone — that expense vanished 🪄");
+            } catch {
+              toast.error("Couldn't undo");
+            }
+          },
+        },
+      });
       nav({ to: "/" });
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't save");
