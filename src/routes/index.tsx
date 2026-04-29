@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Bar, BarChart, ResponsiveContainer, XAxis, Cell } from "recharts";
-import { Sparkles, Plus, TrendingUp } from "lucide-react";
-import { useAppData, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, CATEGORY_META } from "@/lib/store";
+import { Sparkles, Plus, TrendingUp, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+import { useAppData, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, CATEGORY_META, projectWeeklyOverspend } from "@/lib/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Broke No More — Slay your budget" }] }),
@@ -10,7 +11,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { expenses, profile, loading } = useAppData();
+  const { expenses, budgets, profile, loading } = useAppData();
   const income = profile?.monthly_income ?? 0;
   const week = lastNDays(expenses, 7);
   const weekTotal = totalSpent(week);
@@ -20,6 +21,22 @@ function Home() {
   const top3 = spentByCategory(week).slice(0, 3);
   const topCat = top3[0]?.[0];
   const initial = (profile?.username ?? "U").charAt(0).toUpperCase();
+
+  const projections = useMemo(() => projectWeeklyOverspend(expenses, budgets), [expenses, budgets]);
+  const notifiedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (loading) return;
+    for (const p of projections) {
+      const key = `${p.category}:${new Date().toISOString().slice(0,10)}`;
+      if (notifiedRef.current.has(key)) continue;
+      notifiedRef.current.add(key);
+      toast.warning(`${CATEGORY_META[p.category].emoji} ${p.category} is heading over budget`, {
+        description: `On track for ${inr(Math.round(p.projected))} this week (limit ${inr(p.limit)}). Pump the brakes 🛑`,
+        duration: 6000,
+      });
+    }
+  }, [projections, loading]);
 
   if (loading) return <CenterSpinner />;
 
@@ -45,6 +62,35 @@ function Home() {
           <span className="rounded-full bg-white/15 px-3 py-1">Spent {inr(monthTotal)}</span>
         </div>
       </section>
+
+      {projections.length > 0 && (
+        <section className="mt-5 rounded-3xl p-4 border border-destructive/40 bg-destructive/10 shadow-card">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-2xl bg-destructive/20 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-destructive">Budget alert</p>
+              <p className="text-sm font-semibold mt-0.5">
+                {projections.length === 1
+                  ? `${CATEGORY_META[projections[0].category].emoji} ${projections[0].category} is on track to overshoot this week`
+                  : `${projections.length} categories are projected to bust their weekly limit`}
+              </p>
+              <ul className="mt-2 space-y-1">
+                {projections.slice(0, 3).map((p) => (
+                  <li key={p.category} className="text-xs text-muted-foreground flex items-center gap-2">
+                    <span>{CATEGORY_META[p.category].emoji}</span>
+                    <span className="font-medium text-foreground">{p.category}</span>
+                    <span className="ml-auto">
+                      Projected <span className="font-semibold text-destructive">{inr(Math.round(p.projected))}</span> / {inr(p.limit)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="mt-5 glass rounded-3xl p-5 shadow-card">
         <div className="flex items-center justify-between">
