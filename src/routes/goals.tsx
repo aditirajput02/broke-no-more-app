@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Flame, Lock, Trophy, Users } from "lucide-react";
-import { useAppData, CATEGORY_META, type Category, inr, lastNDays } from "@/lib/store";
+import { useAppData, getMeta, type Category, inr, lastNDays } from "@/lib/store";
 import { CenterSpinner } from "./index";
 
 export const Route = createFileRoute("/goals")({
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/goals")({
 const RANKS = ["Broke", "Saver", "Investor", "Money God"] as const;
 
 function GoalsPage() {
-  const { expenses, budgets, stats, loading } = useAppData();
+  const { expenses, budgets, stats, loading, categoryMap } = useAppData();
   const monthly = lastNDays(expenses, 30);
   const xp = stats.xp;
   const streak = stats.streak;
@@ -69,11 +69,12 @@ function GoalsPage() {
             const spent = monthly.filter((e) => e.category === c).reduce((s, e) => s + e.amount, 0);
             const pct = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
             const danger = pct >= 85;
+            const meta = getMeta(c, categoryMap);
             return (
               <div key={c} className="glass rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">{CATEGORY_META[c].emoji}</span>
+                    <span className="text-xl">{meta.emoji}</span>
                     <span className="font-semibold text-sm">{c}</span>
                   </div>
                   <span className={`text-xs font-semibold ${danger ? "text-destructive" : "text-muted-foreground"}`}>
@@ -83,7 +84,7 @@ function GoalsPage() {
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
                   <div className="h-full rounded-full transition-all duration-700" style={{
                     width: `${pct}%`,
-                    background: danger ? "var(--destructive)" : `linear-gradient(90deg, ${CATEGORY_META[c].color}, var(--primary))`,
+                    background: danger ? "var(--destructive)" : `linear-gradient(90deg, ${meta.color}, var(--primary))`,
                   }} />
                 </div>
                 {danger && <p className="mt-1.5 text-[11px] text-destructive">Easy tiger 🐯 — {Math.round(pct)}% used</p>}
