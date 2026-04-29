@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { Home, PlusCircle, PieChart, Sparkles, Trophy, User } from "lucide-react";
+import { Home, PlusCircle, PieChart, Sparkles, User } from "lucide-react";
 
-type NavItem = { to: "/" | "/dashboard" | "/insights" | "/goals" | "/settings"; label: string; Icon: typeof Home };
+type NavItem = { to: "/" | "/dashboard" | "/insights" | "/settings"; label: string; Icon: typeof Home };
 
 const leftItems: NavItem[] = [
   { to: "/", label: "Home", Icon: Home },
