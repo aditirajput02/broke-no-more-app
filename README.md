@@ -66,4 +66,4 @@ This was my first time building a full-stack app with a real database, real auth
 ---
 
 
-*Built by [Your Name](https://github.com/aditirajput02)*
+*Built by [Aditi Rajput](https://github.com/aditirajput02)*
