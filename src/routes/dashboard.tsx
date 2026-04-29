@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { useAppData, CATEGORY_META, type Category, inr, lastNDays, spentByCategory, totalSpent } from "@/lib/store";
-import { Trash2 } from "lucide-react";
+import { useAppData, getMeta, type Category, type CategoryRow, inr, lastNDays, spentByCategory, totalSpent } from "@/lib/store";
+import { Trash2, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { CenterSpinner } from "./index";
+import { CategoryEditor } from "@/components/app/CategoryEditor";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Broke No More" }] }),
@@ -16,15 +17,17 @@ const RANGES = { Week: 7, Month: 30, Year: 365 } as const;
 type RangeKey = keyof typeof RANGES;
 
 function DashPage() {
-  const { expenses, loading, deleteExpense, restoreExpense } = useAppData();
+  const { expenses, loading, deleteExpense, restoreExpense, categories, categoryMap } = useAppData();
   const [range, setRange] = useState<RangeKey>("Month");
   const [filter, setFilter] = useState<Category | "All">("All");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<{ kind: "create" } | { kind: "edit"; row: CategoryRow }>({ kind: "create" });
 
   const scoped = useMemo(() => lastNDays(expenses, RANGES[range]), [expenses, range]);
   const total = totalSpent(scoped);
   const byCat = spentByCategory(scoped);
 
-  const pieData = byCat.map(([c, v]) => ({ name: c, value: v, color: CATEGORY_META[c].color }));
+  const pieData = byCat.map(([c, v]) => ({ name: c, value: v, color: getMeta(c, categoryMap).color }));
   const visible = scoped.filter((e) => filter === "All" || e.category === filter);
 
   if (loading) return <CenterSpinner />;
@@ -34,7 +37,7 @@ function DashPage() {
       const removed = await deleteExpense(id);
       if (!removed) return;
       toast("Deleted — gone but not forgotten 🫡", {
-        description: `${CATEGORY_META[removed.category].emoji} ${removed.category} · ${inr(removed.amount)}`,
+        description: `${getMeta(removed.category, categoryMap).emoji} ${removed.category} · ${inr(removed.amount)}`,
         action: {
           label: "Undo",
           onClick: async () => {
@@ -50,6 +53,15 @@ function DashPage() {
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't delete");
     }
+  };
+
+  const openCreate = () => {
+    setEditorMode({ kind: "create" });
+    setEditorOpen(true);
+  };
+  const openEdit = (row: CategoryRow) => {
+    setEditorMode({ kind: "edit", row });
+    setEditorOpen(true);
   };
 
   return (
@@ -97,7 +109,7 @@ function DashPage() {
         <div className="grid grid-cols-2 gap-2 mt-2">
           {byCat.slice(0, 6).map(([c, v]) => (
             <div key={c} className="flex items-center gap-2 text-xs">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: CATEGORY_META[c].color }} />
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: getMeta(c, categoryMap).color }} />
               <span className="text-muted-foreground">{c}</span>
               <span className="ml-auto font-semibold">{inr(v)}</span>
             </div>
@@ -110,20 +122,47 @@ function DashPage() {
           className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${filter === "All" ? "bg-foreground text-background" : "glass text-muted-foreground"}`}>
           All
         </button>
-        {(Object.keys(CATEGORY_META) as Category[]).map((c) => (
-          <button key={c} onClick={() => setFilter(c)}
-            className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${filter === c ? "bg-foreground text-background" : "glass text-muted-foreground"}`}>
-            {CATEGORY_META[c].emoji} {c}
-          </button>
-        ))}
+        {categories.map((c) => {
+          const active = filter === c.name;
+          const meta = getMeta(c.name, categoryMap);
+          return (
+            <div
+              key={c.id}
+              className={`shrink-0 inline-flex items-center rounded-full text-xs font-semibold transition-all ${active ? "bg-foreground text-background" : "glass text-muted-foreground"}`}
+            >
+              <button
+                onClick={() => setFilter(c.name)}
+                className="pl-3.5 pr-2 py-1.5 inline-flex items-center gap-1.5"
+              >
+                <span className="text-sm leading-none">{meta.emoji}</span>
+                <span>{c.name}</span>
+              </button>
+              <button
+                onClick={() => openEdit(c)}
+                aria-label={`Edit ${c.name}`}
+                className={`pr-2.5 pl-1 py-1.5 rounded-r-full transition-opacity ${active ? "opacity-90 hover:opacity-100" : "opacity-60 hover:opacity-100"}`}
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            </div>
+          );
+        })}
+        <button
+          onClick={openCreate}
+          className="shrink-0 inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-xs font-semibold border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add custom
+        </button>
       </div>
 
       <div className="mt-3 space-y-2">
-        {visible.map((e) => (
+        {visible.map((e) => {
+          const meta = getMeta(e.category, categoryMap);
+          return (
           <div key={e.id} className="glass rounded-2xl p-3 flex items-center gap-3">
             <div className="h-11 w-11 rounded-xl flex items-center justify-center text-xl"
-              style={{ background: `color-mix(in oklab, ${CATEGORY_META[e.category].color} 25%, transparent)` }}>
-              {CATEGORY_META[e.category].emoji}
+              style={{ background: `color-mix(in oklab, ${meta.color} 25%, transparent)` }}>
+              {meta.emoji}
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-sm truncate">{e.note || e.category}</p>
@@ -138,11 +177,14 @@ function DashPage() {
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
-        ))}
+          );
+        })}
         {visible.length === 0 && (
           <p className="text-center text-sm text-muted-foreground py-8">Nothing here. Iconic. 🌟</p>
         )}
       </div>
+
+      <CategoryEditor open={editorOpen} mode={editorMode} onOpenChange={setEditorOpen} />
     </div>
   );
 }

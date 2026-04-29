@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Bar, BarChart, ResponsiveContainer, XAxis, Cell } from "recharts";
 import { Sparkles, Plus, TrendingUp, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { useAppData, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, CATEGORY_META, projectWeeklyOverspend, startOfWeek, type Category } from "@/lib/store";
+import { useAppData, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, getMeta, projectWeeklyOverspend, startOfWeek, type Category } from "@/lib/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Broke No More — Slay your budget" }] }),
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { expenses, budgets, profile, loading } = useAppData();
+  const { expenses, budgets, profile, loading, categoryMap } = useAppData();
   const income = profile?.monthly_income ?? 0;
   const week = lastNDays(expenses, 7);
   const weekTotal = totalSpent(week);
@@ -52,12 +52,12 @@ function Home() {
       const key = `${p.category}:${new Date().toISOString().slice(0,10)}`;
       if (notifiedRef.current.has(key)) continue;
       notifiedRef.current.add(key);
-      toast.warning(`${CATEGORY_META[p.category].emoji} ${p.category} is heading over budget`, {
+      toast.warning(`${getMeta(p.category, categoryMap).emoji} ${p.category} is heading over budget`, {
         description: `On track for ${inr(Math.round(p.projected))} this week (limit ${inr(p.limit)}). Pump the brakes 🛑`,
         duration: 6000,
       });
     }
-  }, [projections, loading]);
+  }, [projections, loading, categoryMap]);
 
   if (loading) return <CenterSpinner />;
 
@@ -94,13 +94,13 @@ function Home() {
               <p className="text-xs font-semibold uppercase tracking-wider text-destructive">Budget alert</p>
               <p className="text-sm font-semibold mt-0.5">
                 {projections.length === 1
-                  ? `${CATEGORY_META[projections[0].category].emoji} ${projections[0].category} is on track to overshoot this week`
+                  ? `${getMeta(projections[0].category, categoryMap).emoji} ${projections[0].category} is on track to overshoot this week`
                   : `${projections.length} categories are projected to bust their weekly limit`}
               </p>
               <ul className="mt-2 space-y-1">
                 {projections.slice(0, 3).map((p) => (
                   <li key={p.category} className="text-xs text-muted-foreground flex items-center gap-2">
-                    <span>{CATEGORY_META[p.category].emoji}</span>
+                    <span>{getMeta(p.category, categoryMap).emoji}</span>
                     <span className="font-medium text-foreground">{p.category}</span>
                     <span className="ml-auto">
                       Projected <span className="font-semibold text-destructive">{inr(Math.round(p.projected))}</span> / {inr(p.limit)}
@@ -156,11 +156,12 @@ function Home() {
               const danger = r.pct >= 85;
               const fillPct = Math.min(100, r.pct);
               const overflowPct = over ? Math.min(100, ((r.spent - r.weeklyLimit) / r.weeklyLimit) * 100) : 0;
+              const meta = getMeta(r.category, categoryMap);
               return (
                 <div key={r.category}>
                   <div className="flex items-center justify-between mb-1.5 text-xs">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-base leading-none">{CATEGORY_META[r.category].emoji}</span>
+                      <span className="text-base leading-none">{meta.emoji}</span>
                       <span className="font-semibold">{r.category}</span>
                     </div>
                     <span className={`font-semibold ${over ? "text-destructive" : danger ? "text-amber" : "text-muted-foreground"}`}>
@@ -176,7 +177,7 @@ function Home() {
                           ? "var(--destructive)"
                           : danger
                             ? "linear-gradient(90deg, var(--amber), var(--coral))"
-                            : `linear-gradient(90deg, ${CATEGORY_META[r.category].color}, var(--primary))`,
+                            : `linear-gradient(90deg, ${meta.color}, var(--primary))`,
                       }}
                     />
                   </div>
@@ -195,14 +196,17 @@ function Home() {
       <section className="mt-5">
         <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2.5">Top categories</p>
         <div className="grid grid-cols-3 gap-2.5">
-          {top3.map(([c, v]) => (
-            <div key={c} className="rounded-2xl p-3 text-primary-foreground shadow-card"
-              style={{ background: `linear-gradient(135deg, ${CATEGORY_META[c].color}, var(--primary))` }}>
-              <div className="text-2xl">{CATEGORY_META[c].emoji}</div>
-              <p className="mt-2 text-[11px] font-semibold opacity-90">{c}</p>
-              <p className="font-bold text-sm">{inr(v)}</p>
-            </div>
-          ))}
+          {top3.map(([c, v]) => {
+            const meta = getMeta(c, categoryMap);
+            return (
+              <div key={c} className="rounded-2xl p-3 text-primary-foreground shadow-card"
+                style={{ background: `linear-gradient(135deg, ${meta.color}, var(--primary))` }}>
+                <div className="text-2xl">{meta.emoji}</div>
+                <p className="mt-2 text-[11px] font-semibold opacity-90">{c}</p>
+                <p className="font-bold text-sm">{inr(v)}</p>
+              </div>
+            );
+          })}
           {top3.length === 0 && (
             <div className="col-span-3 glass rounded-2xl p-4 text-sm text-muted-foreground text-center">
               No spending this week. Iconic. 🌟
@@ -220,7 +224,7 @@ function Home() {
             <p className="text-xs font-semibold uppercase tracking-wider text-primary">AI Insight</p>
             <p className="text-sm font-semibold mt-0.5">
               {topCat
-                ? `You're spending the most on ${topCat} ${CATEGORY_META[topCat].emoji} this week — maybe chill?`
+                ? `You're spending the most on ${topCat} ${getMeta(topCat, categoryMap).emoji} this week — maybe chill?`
                 : `Quiet week. Your bank account is purring 🐱`}
             </p>
           </div>
