@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Calendar as CalIcon } from "lucide-react";
-import { useAppData, CATEGORY_META, type Category, inr } from "@/lib/store";
+import { useAppData, getMeta, type Category, inr } from "@/lib/store";
 import { format } from "date-fns";
 
 export const Route = createFileRoute("/add")({
@@ -10,7 +10,6 @@ export const Route = createFileRoute("/add")({
   component: AddPage,
 });
 
-const cats = Object.keys(CATEGORY_META) as Category[];
 const quips: Record<string, string> = {
   Food: "Logged! Your tummy thanks you 🍜",
   Travel: "Vroom vroom — added to Travel ✈️",
@@ -19,17 +18,25 @@ const quips: Record<string, string> = {
   Rent: "Adulting points +100 🏠",
   Subscriptions: "Another one bites the bank 📺",
   Health: "Future you says thanks 💊",
-  Custom: "Logged. You sneaky spender ✨",
 };
+const defaultQuip = "Logged. You sneaky spender ✨";
 
 function AddPage() {
   const nav = useNavigate();
-  const { addExpense, deleteExpense } = useAppData();
+  const { addExpense, deleteExpense, categories, categoryMap } = useAppData();
   const [amount, setAmount] = useState("");
   const [cat, setCat] = useState<Category>("Food");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [saving, setSaving] = useState(false);
+
+  // Once categories load, ensure the selected one exists.
+  useEffect(() => {
+    if (categories.length === 0) return;
+    if (!categories.some((c) => c.name === cat)) {
+      setCat(categories[0].name);
+    }
+  }, [categories, cat]);
 
   const submit = async () => {
     const n = Number(amount);
@@ -37,7 +44,7 @@ function AddPage() {
     setSaving(true);
     try {
       const created = await addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
-      toast.success(quips[cat] ?? "Logged!", {
+      toast.success(quips[cat] ?? defaultQuip, {
         description: `-${inr(n)} from ${cat} budget · +10 XP`,
         action: {
           label: "Undo",
@@ -84,20 +91,26 @@ function AddPage() {
       <div className="mt-10">
         <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Category</p>
         <div className="grid grid-cols-4 gap-2.5">
-          {cats.map((c) => {
-            const active = cat === c;
+          {categories.map((c) => {
+            const active = cat === c.name;
+            const meta = getMeta(c.name, categoryMap);
             return (
               <button
-                key={c}
-                onClick={() => setCat(c)}
+                key={c.id}
+                onClick={() => setCat(c.name)}
                 className={`group rounded-2xl p-3 flex flex-col items-center gap-1.5 transition-all border ${active ? "bg-gradient-primary text-primary-foreground border-transparent shadow-glow scale-105" : "glass border-border hover:scale-105"}`}
               >
-                <span className="text-2xl">{CATEGORY_META[c].emoji}</span>
-                <span className="text-[11px] font-medium">{c}</span>
+                <span className="text-2xl">{meta.emoji}</span>
+                <span className="text-[11px] font-medium truncate w-full text-center">{c.name}</span>
               </button>
             );
           })}
         </div>
+        {categories.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-3">
+            No categories yet — add one from the Stats page.
+          </p>
+        )}
       </div>
 
       <div className="mt-6 space-y-3">
