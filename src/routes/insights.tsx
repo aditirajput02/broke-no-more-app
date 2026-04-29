@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { Sparkles, Send, TrendingUp, TrendingDown, PiggyBank, Loader2, Share2 } from "lucide-react";
-import { useAppData, lastNDays, spentByCategory, totalSpent, inr, CATEGORY_META } from "@/lib/store";
+import { useAppData, lastNDays, spentByCategory, totalSpent, inr, getMeta } from "@/lib/store";
 import { toPng } from "html-to-image";
 import { supabase } from "@/integrations/supabase/client";
 import { CenterSpinner } from "./index";
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/insights")({
 type Msg = { role: "user" | "assistant"; content: string };
 
 function InsightsPage() {
-  const { expenses, profile, loading } = useAppData();
+  const { expenses, profile, loading, categoryMap } = useAppData();
   const shareRef = useRef<HTMLDivElement | null>(null);
   const [sharing, setSharing] = useState(false);
   const [chat, setChat] = useState<Msg[]>([
@@ -162,11 +162,12 @@ function InsightsPage() {
             {weekTopCats.length === 0 && (
               <div style={{ fontSize: 14, opacity: 0.7 }}>No spending this week. Iconic. 🌟</div>
             )}
-            {weekTopCats.map(([c, v]) => {
+              {weekTopCats.map(([c, v]) => {
               const pct = insights.tw > 0 ? Math.round((v / insights.tw) * 100) : 0;
+                const meta = getMeta(c, categoryMap);
               return (
                 <div key={c} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ fontSize: 22, width: 28 }}>{CATEGORY_META[c].emoji}</div>
+                    <div style={{ fontSize: 22, width: 28 }}>{meta.emoji}</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600 }}>
                       <span>{c}</span>
@@ -212,7 +213,7 @@ function InsightsPage() {
         {insights.top && (
           <div className="rounded-3xl p-5 shadow-coral bg-gradient-coral text-primary-foreground">
             <p className="text-xs font-semibold uppercase tracking-wider opacity-90">Top category</p>
-            <p className="mt-1 text-2xl font-bold">{CATEGORY_META[insights.top[0]].emoji} {insights.top[0]}</p>
+            <p className="mt-1 text-2xl font-bold">{getMeta(insights.top[0], categoryMap).emoji} {insights.top[0]}</p>
             <p className="text-sm opacity-90">{inr(insights.top[1])} this week. Your wallet called. It's sobbing. 😭</p>
           </div>
         )}
