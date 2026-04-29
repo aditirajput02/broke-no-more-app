@@ -10,7 +10,6 @@ const leftItems: NavItem[] = [
 
 const rightItems: NavItem[] = [
   { to: "/insights", label: "AI", Icon: Sparkles },
-  { to: "/goals", label: "Goals", Icon: Trophy },
   { to: "/settings", label: "Profile", Icon: User },
 ];
 
