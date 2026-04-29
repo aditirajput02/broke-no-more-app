@@ -24,7 +24,7 @@ const quips: Record<string, string> = {
 
 function AddPage() {
   const nav = useNavigate();
-  const { addExpense } = useAppData();
+  const { addExpense, deleteExpense } = useAppData();
   const [amount, setAmount] = useState("");
   const [cat, setCat] = useState<Category>("Food");
   const [note, setNote] = useState("");
@@ -36,8 +36,21 @@ function AddPage() {
     if (!n || n <= 0) { toast.error("Enter an amount first 💸"); return; }
     setSaving(true);
     try {
-      await addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
-      toast.success(quips[cat] ?? "Logged!", { description: `-${inr(n)} from ${cat} budget · +10 XP` });
+      const created = await addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
+      toast.success(quips[cat] ?? "Logged!", {
+        description: `-${inr(n)} from ${cat} budget · +10 XP`,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              await deleteExpense(created.id);
+              toast("Undone — that expense vanished 🪄");
+            } catch {
+              toast.error("Couldn't undo");
+            }
+          },
+        },
+      });
       nav({ to: "/" });
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't save");

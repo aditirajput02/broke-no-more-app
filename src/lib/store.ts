@@ -44,7 +44,9 @@ export type AppData = {
   stats: Stats;
   loading: boolean;
   refresh: () => Promise<void>;
-  addExpense: (e: Omit<Expense, "id">) => Promise<void>;
+  addExpense: (e: Omit<Expense, "id">) => Promise<Expense>;
+  deleteExpense: (id: string) => Promise<Expense | null>;
+  restoreExpense: (e: Expense) => Promise<void>;
   setIncome: (n: number) => Promise<void>;
   setBudget: (c: Category, n: number) => Promise<void>;
 };
@@ -85,14 +87,15 @@ export function useAppData(): AppData {
   useEffect(() => { refresh(); }, [refresh]);
 
   const addExpense = useCallback(async (e: Omit<Expense, "id">) => {
-    if (!user) return;
+    if (!user) throw new Error("Not signed in");
     const { data, error } = await supabase.from("expenses").insert({
       user_id: user.id, amount: e.amount, category: e.category, note: e.note, date: e.date,
     }).select().single();
     if (error || !data) throw error;
-    setExpenses((prev) => [{
+    const created: Expense = {
       id: data.id, amount: Number(data.amount), category: data.category as Category, note: data.note ?? "", date: data.date,
-    }, ...prev]);
+    };
+    setExpenses((prev) => [created, ...prev]);
     // XP + streak update
     const today = new Date().toISOString().slice(0, 10);
     const last = stats.last_log_date;
@@ -111,6 +114,7 @@ export function useAppData(): AppData {
       .upsert({ user_id: user.id, xp: newXp, streak: newStreak, last_log_date: today }, { onConflict: "user_id" })
       .select().single();
     if (sData) setStats({ xp: sData.xp, streak: sData.streak, last_log_date: sData.last_log_date });
+    return created;
   }, [user, stats]);
 
   const setIncome = useCallback(async (n: number) => {
@@ -125,7 +129,33 @@ export function useAppData(): AppData {
     setBudgets((b) => ({ ...b, [c]: n }));
   }, [user]);
 
-  return { expenses, budgets, profile, stats, loading, refresh, addExpense, setIncome, setBudget };
+  const deleteExpense = useCallback(async (id: string) => {
+    if (!user) return null;
+    const target = expenses.find((e) => e.id === id) ?? null;
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    const { error } = await supabase.from("expenses").delete().eq("id", id).eq("user_id", user.id);
+    if (error) {
+      // rollback
+      if (target) setExpenses((prev) => [target, ...prev]);
+      throw error;
+    }
+    return target;
+  }, [user, expenses]);
+
+  const restoreExpense = useCallback(async (e: Expense) => {
+    if (!user) return;
+    const { data, error } = await supabase.from("expenses").insert({
+      id: e.id, user_id: user.id, amount: e.amount, category: e.category, note: e.note, date: e.date,
+    }).select().single();
+    if (error || !data) throw error;
+    setExpenses((prev) => {
+      if (prev.some((x) => x.id === data.id)) return prev;
+      const next = [{ id: data.id, amount: Number(data.amount), category: data.category as Category, note: data.note ?? "", date: data.date }, ...prev];
+      return next.sort((a, b) => +new Date(b.date) - +new Date(a.date));
+    });
+  }, [user]);
+
+  return { expenses, budgets, profile, stats, loading, refresh, addExpense, deleteExpense, restoreExpense, setIncome, setBudget };
 }
 
 // helpers
@@ -156,4 +186,48 @@ export function weeklyBars(expenses: Expense[]) {
       .reduce((s, e) => s + e.amount, 0);
     return { day: days[d.getDay()], total };
   });
+}
+
+// Projection: get start of current week (Mon) and project category spend to week end.
+export function startOfWeek(d: Date = new Date()): Date {
+  const day = d.getDay(); // 0 Sun..6 Sat
+  const diff = (day + 6) % 7; // days since Mon
+  const r = new Date(d); r.setHours(0,0,0,0); r.setDate(r.getDate() - diff);
+  return r;
+}
+
+export type Projection = {
+  category: Category;
+  spent: number;
+  limit: number;
+  projected: number;
+  willExceed: boolean;
+  daysIntoWeek: number;
+};
+
+export function projectWeeklyOverspend(
+  expenses: Expense[],
+  budgets: Partial<Record<Category, number>>,
+): Projection[] {
+  const start = startOfWeek();
+  const now = new Date();
+  const elapsedMs = now.getTime() - start.getTime();
+  const daysElapsed = Math.max(1, elapsedMs / 86400000); // avoid /0
+  const totalDays = 7;
+  const out: Projection[] = [];
+  for (const [catRaw, limit] of Object.entries(budgets)) {
+    const cat = catRaw as Category;
+    if (!limit || limit <= 0) continue;
+    const spent = expenses
+      .filter((e) => e.category === cat && new Date(e.date).getTime() >= start.getTime())
+      .reduce((s, e) => s + e.amount, 0);
+    if (spent <= 0) continue;
+    const projected = (spent / daysElapsed) * totalDays;
+    out.push({
+      category: cat, spent, limit, projected,
+      willExceed: projected > limit && spent < limit, // not yet exceeded but on track to
+      daysIntoWeek: Math.ceil(daysElapsed),
+    });
+  }
+  return out.filter((p) => p.willExceed).sort((a, b) => (b.projected / b.limit) - (a.projected / a.limit));
 }

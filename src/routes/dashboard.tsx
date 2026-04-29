@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { useAppData, CATEGORY_META, type Category, inr, lastNDays, spentByCategory, totalSpent } from "@/lib/store";
+import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { CenterSpinner } from "./index";
 
@@ -14,7 +16,7 @@ const RANGES = { Week: 7, Month: 30, Year: 365 } as const;
 type RangeKey = keyof typeof RANGES;
 
 function DashPage() {
-  const { expenses, loading } = useAppData();
+  const { expenses, loading, deleteExpense, restoreExpense } = useAppData();
   const [range, setRange] = useState<RangeKey>("Month");
   const [filter, setFilter] = useState<Category | "All">("All");
 
@@ -26,6 +28,29 @@ function DashPage() {
   const visible = scoped.filter((e) => filter === "All" || e.category === filter);
 
   if (loading) return <CenterSpinner />;
+
+  const handleDelete = async (id: string) => {
+    try {
+      const removed = await deleteExpense(id);
+      if (!removed) return;
+      toast("Deleted — gone but not forgotten 🫡", {
+        description: `${CATEGORY_META[removed.category].emoji} ${removed.category} · ${inr(removed.amount)}`,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              await restoreExpense(removed);
+              toast.success("Brought it back 🪄");
+            } catch {
+              toast.error("Couldn't restore");
+            }
+          },
+        },
+      });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't delete");
+    }
+  };
 
   return (
     <div className="mx-auto max-w-xl px-5 pt-8 pb-4 animate-float-up">
@@ -105,6 +130,13 @@ function DashPage() {
               <p className="text-xs text-muted-foreground">{e.category} · {format(new Date(e.date), "MMM d")}</p>
             </div>
             <p className="font-bold">-{inr(e.amount)}</p>
+            <button
+              onClick={() => handleDelete(e.id)}
+              aria-label="Delete expense"
+              className="ml-1 h-8 w-8 rounded-lg grid place-items-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         ))}
         {visible.length === 0 && (
