@@ -44,7 +44,7 @@ export type AppData = {
   stats: Stats;
   loading: boolean;
   refresh: () => Promise<void>;
-  addExpense: (e: Omit<Expense, "id">) => Promise<void>;
+  addExpense: (e: Omit<Expense, "id">) => Promise<Expense>;
   deleteExpense: (id: string) => Promise<Expense | null>;
   restoreExpense: (e: Expense) => Promise<void>;
   setIncome: (n: number) => Promise<void>;
@@ -92,9 +92,10 @@ export function useAppData(): AppData {
       user_id: user.id, amount: e.amount, category: e.category, note: e.note, date: e.date,
     }).select().single();
     if (error || !data) throw error;
-    setExpenses((prev) => [{
+    const created: Expense = {
       id: data.id, amount: Number(data.amount), category: data.category as Category, note: data.note ?? "", date: data.date,
-    }, ...prev]);
+    };
+    setExpenses((prev) => [created, ...prev]);
     // XP + streak update
     const today = new Date().toISOString().slice(0, 10);
     const last = stats.last_log_date;
@@ -113,6 +114,7 @@ export function useAppData(): AppData {
       .upsert({ user_id: user.id, xp: newXp, streak: newStreak, last_log_date: today }, { onConflict: "user_id" })
       .select().single();
     if (sData) setStats({ xp: sData.xp, streak: sData.streak, last_log_date: sData.last_log_date });
+    return created;
   }, [user, stats]);
 
   const setIncome = useCallback(async (n: number) => {
