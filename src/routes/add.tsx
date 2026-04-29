@@ -36,16 +36,14 @@ function AddPage() {
     if (!n || n <= 0) { toast.error("Enter an amount first 💸"); return; }
     setSaving(true);
     try {
-      await addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
-      const created = await Promise.resolve(); // placeholder removed below
-      void created;
+      const created = await addExpense({ amount: n, category: cat, note, date: new Date(date).toISOString() });
       toast.success(quips[cat] ?? "Logged!", {
         description: `-${inr(n)} from ${cat} budget · +10 XP`,
         action: {
           label: "Undo",
           onClick: async () => {
             try {
-              await deleteExpense(createdId);
+              await deleteExpense(created.id);
               toast("Undone — that expense vanished 🪄");
             } catch {
               toast.error("Couldn't undo");
