@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Bar, BarChart, ResponsiveContainer, XAxis, Cell } from "recharts";
 import { Sparkles, Plus, TrendingUp, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { useAppData, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, CATEGORY_META, projectWeeklyOverspend } from "@/lib/store";
+import { useAppData, totalSpent, lastNDays, weeklyBars, spentByCategory, inr, CATEGORY_META, projectWeeklyOverspend, startOfWeek, type Category } from "@/lib/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Broke No More — Slay your budget" }] }),
@@ -23,6 +23,27 @@ function Home() {
   const initial = (profile?.username ?? "U").charAt(0).toUpperCase();
 
   const projections = useMemo(() => projectWeeklyOverspend(expenses, budgets), [expenses, budgets]);
+
+  const weeklyBudgetRows = useMemo(() => {
+    const start = startOfWeek().getTime();
+    const spentByCat = new Map<Category, number>();
+    for (const e of expenses) {
+      if (new Date(e.date).getTime() < start) continue;
+      spentByCat.set(e.category, (spentByCat.get(e.category) ?? 0) + e.amount);
+    }
+    const rows = (Object.keys(budgets) as Category[])
+      .map((c) => {
+        const monthlyLimit = budgets[c] ?? 0;
+        const weeklyLimit = (monthlyLimit * 7) / 30;
+        const spent = spentByCat.get(c) ?? 0;
+        const pct = weeklyLimit > 0 ? (spent / weeklyLimit) * 100 : 0;
+        return { category: c, weeklyLimit, spent, pct };
+      })
+      .filter((r) => r.weeklyLimit > 0)
+      .sort((a, b) => b.pct - a.pct);
+    return rows;
+  }, [expenses, budgets]);
+
   const notifiedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -114,6 +135,61 @@ function Home() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </section>
+
+      <section className="mt-5 glass rounded-3xl p-5 shadow-card">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Budget vs actual</p>
+            <p className="text-sm font-semibold">This week's tracker 📊</p>
+          </div>
+          <Link to="/settings" className="text-xs font-semibold text-primary">Edit</Link>
+        </div>
+        {weeklyBudgetRows.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No budgets set yet. Add some in Settings to track them here ✨
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {weeklyBudgetRows.map((r) => {
+              const over = r.spent > r.weeklyLimit;
+              const danger = r.pct >= 85;
+              const fillPct = Math.min(100, r.pct);
+              const overflowPct = over ? Math.min(100, ((r.spent - r.weeklyLimit) / r.weeklyLimit) * 100) : 0;
+              return (
+                <div key={r.category}>
+                  <div className="flex items-center justify-between mb-1.5 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base leading-none">{CATEGORY_META[r.category].emoji}</span>
+                      <span className="font-semibold">{r.category}</span>
+                    </div>
+                    <span className={`font-semibold ${over ? "text-destructive" : danger ? "text-amber" : "text-muted-foreground"}`}>
+                      {inr(Math.round(r.spent))} / {inr(Math.round(r.weeklyLimit))}
+                    </span>
+                  </div>
+                  <div className="relative h-2.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${fillPct}%`,
+                        background: over
+                          ? "var(--destructive)"
+                          : danger
+                            ? "linear-gradient(90deg, var(--amber), var(--coral))"
+                            : `linear-gradient(90deg, ${CATEGORY_META[r.category].color}, var(--primary))`,
+                      }}
+                    />
+                  </div>
+                  {over && (
+                    <p className="mt-1 text-[11px] text-destructive">
+                      Over by {inr(Math.round(r.spent - r.weeklyLimit))} ({Math.round(overflowPct)}%) — yikes 😬
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section className="mt-5">
